@@ -42,7 +42,6 @@ public class TCPTransport: Transport {
     
     public init(connection: NWConnection) {
         self.connection = connection
-        start()
     }
     
     public init() {
@@ -50,6 +49,11 @@ public class TCPTransport: Transport {
     }
     
     public func connect(url: URL, timeout: Double = 10, certificatePinning: CertificatePinning? = nil) {
+        if connection != nil {
+            start()
+            return
+        }
+
         guard let parts = url.getParts() else {
             delegate?.connectionChanged(state: .failed(TCPTransportError.invalidRequest))
             return
