@@ -31,6 +31,7 @@ public enum FoundationTransportError: Error {
 public class FoundationTransport: NSObject, Transport, StreamDelegate {
     private weak var delegate: TransportEventClient?
     private let workQueue = DispatchQueue(label: "com.vluxe.starscream.websocket", attributes: [])
+    private let disconnectSemaphore = DispatchSemaphore(value: 1)
     private var inputStream: InputStream?
     private var outputStream: OutputStream?
     private var isOpen = false
@@ -95,6 +96,16 @@ public class FoundationTransport: NSObject, Transport, StreamDelegate {
     }
     
     public func disconnect() {
+        /*
+         Acquire semaphore to ensure thread-safe execution.
+         Only one thread can execute disconnect() at a time.
+         */
+        disconnectSemaphore.wait()
+        defer { disconnectSemaphore.signal() }
+        
+        // Skip if already disconnected
+        guard isOpen else { return }
+        
         if let stream = inputStream {
             stream.delegate = nil
             CFReadStreamSetDispatchQueue(stream, nil)
@@ -105,6 +116,14 @@ public class FoundationTransport: NSObject, Transport, StreamDelegate {
             CFWriteStreamSetDispatchQueue(stream, nil)
             stream.close()
         }
+        
+        /*
+         Wait for pending RunLoop events to complete.
+         This prevents use-after-free crashes when RunLoop tries to
+         access streams after they've been deallocated.
+         */
+        Thread.sleep(forTimeInterval: 0.1)
+        
         isOpen = false
         outputStream = nil
         inputStream = nil
